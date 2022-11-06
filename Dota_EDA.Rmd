@@ -1,0 +1,157 @@
+---
+title: "Dota_EDA"
+output: html_document
+date: "2022-11-06"
+---
+
+```{r}
+#Read Files
+library(readr)
+df <- read_csv("match.csv")
+```
+
+```{r}
+head(df)
+```
+```{r}
+str(df)
+```
+```{r}
+#check missing val
+sum(is.na(df))
+```
+```{r}
+#Duration still in seconds so change it to min
+df$duration <- df$duration/60
+```
+
+```{r}
+#drop unnecessary columns to make our analysis tight
+library(dplyr)
+df <- select(df, -c("start_time", "tower_status_radiant", "tower_status_dire", "barracks_status_dire", "game_mode", "negative_votes", "positive_votes", "cluster", "barracks_status_radiant"))
+
+str(df)
+```
+
+```{r}
+#so if radiant lose means dire win rigth? so we make another column to include that info
+df$dire_win <- ifelse(df$radiant_win == "True", "0", "1")
+head(df)
+```
+
+```{r}
+#move on to the maestro of the game
+df2 <- read_csv("players.csv")
+head(df2)
+```
+
+```{r}
+#remove unnecessary columns again
+df2 <- select(df2, -c("item_0", "item_1", "item_2", "item_3","item_4", "item_5", "level", "leaver_status", "xp_hero", "xp_creep","xp_roshan", "xp_other", "gold_other", "gold_death", "gold_buyback",       "gold_abandon", "gold_sell", "gold_destroying_structure",       "gold_killing_heros", "gold_killing_creeps", "gold_killing_roshan",
+       "gold_killing_couriers", "unit_order_none","unit_order_move_to_position", "unit_order_move_to_target","unit_order_attack_move", "unit_order_attack_target",
+       "unit_order_cast_position", "unit_order_cast_target","unit_order_cast_target_tree", "unit_order_cast_no_target",
+       "unit_order_cast_toggle", "unit_order_hold_position","unit_order_train_ability","unit_order_drop_item","unit_order_give_item", "unit_order_pickup_item",
+       "unit_order_pickup_rune", "unit_order_purchase_item","unit_order_sell_item", "unit_order_disassemble_item","unit_order_move_item", "unit_order_cast_toggle_auto",
+       "unit_order_stop", "unit_order_taunt", "unit_order_buyback","unit_order_glyph","unit_order_eject_item_from_stash",
+       "unit_order_cast_rune", "unit_order_ping_ability","unit_order_move_to_direction", "unit_order_patrol",
+       "unit_order_vector_target_position", "unit_order_radar","unit_order_set_item_combine_lock", "unit_order_continue"))
+```
+
+```{r}
+# better
+head(df2)
+```
+
+```{r}
+#merge/join the data
+
+dota <- left_join(df2, df, by = c("match_id" ="match_id"))
+dota
+```
+```{r}
+df3 <- read_csv("hero_names.csv")
+#drop unnecessary columns 
+df3 <- select(df3, -c("name"))
+#merge the data again
+dota <- left_join(dota, df3, by = c("hero_id" ="hero_id"))
+dota
+```
+```{r}
+df4 <- read_csv("player_ratings.csv")
+#merge.. again.. :')
+dota <- left_join(dota, df4, by = c("account_id" = "account_id"))
+head(dota)
+```
+
+```{r}
+dota$win_rate <- dota$total_wins/dota$total_matches*100
+dota %>% arrange(desc(dota$win_rate))
+```
+#checking obs
+```{r}
+sum(unique(dota$match_id))
+```
+```{r}
+sum(unique(dota$account_id))
+```
+#missing val
+```{r}
+sum(is.na(dota))
+```
+```{r}
+dota <- na.omit(dota)
+```
+
+
+
+```{r}
+#for dota players you might ban this hero 
+dota %>% group_by(localized_name) %>% summarise(average = mean(win_rate, na.rm = T)) %>% arrange(desc(average))
+```
+interesting, so support role is very important huh
+
+```{r}
+#for dota developers you might want to give this hero some epic skin
+dota %>% group_by(localized_name) %>% summarise(frequency = n()) %>% arrange(desc(frequency))
+```
+mostly they already have arcana (dota2 hero epic skin)
+
+```{r}
+dota %>% group_by(localized_name) %>% summarise(frequency = n()) %>% arrange(frequency)
+```
+
+that's why most of support hero got the biggest winrate
+
+```{r}
+dota %>% group_by(account_id) %>% summarise(kills = sum(kills),assists = sum(assists),deaths = sum(deaths) ,matchplayed = n(), winrate = mean(win_rate)) %>% arrange(desc(kills))
+```
+```{r}
+#guys forget my first analysis that tells you which heroes to ban, ban this heroes instead
+dota %>% group_by(localized_name) %>% summarise(kills = sum(kills),assists = sum(assists),deaths = sum(deaths) ,matchplayed = n(), winrate = mean(win_rate)) %>% arrange(desc(kills))
+
+```
+now i dont see any support heroes
+
+```{r}
+#are all of that carry hero have a lot of kills because they earn gold and exp easily?
+dota %>% group_by(localized_name) %>% summarise(gold = mean(gold),gold_per_min = sum(gold_per_min),exp_per_min = mean(xp_per_min)) %>% arrange(desc(gold))
+```
+that's not like what i expected maybe the hero above have a lot of kills because they have usefull skill to do ks? (ks in dota2 means "kill secure", you know like your team mates do the hard work and u just need a little touch up and do the kill) i mean windranger is that kind of hero for sure. Annoying right
+
+```{r}
+# let's change out point of view a little
+dota %>% group_by(localized_name) %>% summarise(gold = mean(gold),gold_per_min = sum(gold_per_min),exp_per_min = mean(xp_per_min)) %>% arrange(desc(exp_per_min))
+```
+okay let's see, i see slark, shadow fiend, and ursa here. Okay so maybe getting lot of exp is a lot usefull than farm all the time to get golds? 
+you decide
+
+```{r}
+# lets change our point of view again, so in dota2 the player that get kills is the player that get the last hit right, and we get gold from killing creeps and monster also if we get the last hit. OKay let's check it out peeps
+
+dota %>% group_by(localized_name) %>% summarise(last_hits = sum(last_hits)) %>% arrange(desc(last_hits))
+```
+I see windranger hereee O_O
+
+# okay for my opinion shadow fiend is the most terrfying heroes because he can get exp easily, last hit easily and also kills. Disclaimer i only just talking about stats here okay, if you use shadow fiend and still lose the game, Improve your skill mate! cheers
+
+# Okay That's it for my EDA, thank you for reading
